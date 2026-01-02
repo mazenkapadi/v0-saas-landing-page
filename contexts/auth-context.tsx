@@ -34,11 +34,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [useMockAuth, setUseMockAuth] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
-  const isAuthenticated = !!user || !!profile
+  const isAuthenticated = !!user
 
   // Fetch user profile
   const fetchProfile = async (userId: string) => {
@@ -60,17 +59,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Check and restore session on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const timeout = setTimeout(() => {
-        console.error('Auth check timed out')
-        setUser(null)
-        setProfile(null)
-        setIsLoading(false)
-      }, 5000) // 5 second timeout
-
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
-        
-        clearTimeout(timeout)
 
         if (error) {
           console.error('Supabase auth error:', error)
@@ -86,24 +76,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } catch (error) {
         console.error('Error checking authentication:', error)
-        console.warn('Supabase connection failed, using mock authentication mode')
-        setUseMockAuth(true)
-        
-        // Check for mock auth in localStorage
-        const mockAuthStatus = localStorage.getItem('mock-dashboard-auth')
-        const mockProfileStr = localStorage.getItem('mock-profile')
-        
-        if (mockAuthStatus === 'true' && mockProfileStr) {
-          try {
-            setProfile(JSON.parse(mockProfileStr))
-          } catch (e) {
-            console.error('Failed to parse mock profile')
-          }
-        }
-        
         setUser(null)
+        setProfile(null)
       } finally {
-        clearTimeout(timeout)
         setIsLoading(false)
       }
     }
@@ -128,26 +103,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   const login = async (email: string, password: string) => {
-    if (useMockAuth) {
-      // Mock authentication for development
-      const mockProfile: Profile = {
-        id: 'mock-user-1',
-        email: email,
-        name: 'Test User',
-        company_name: 'Test Company',
-        phone: '+1 234 567 8900',
-        address: '123 Test St\nTest City, TS 12345',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      
-      localStorage.setItem('mock-dashboard-auth', 'true')
-      localStorage.setItem('mock-profile', JSON.stringify(mockProfile))
-      setProfile(mockProfile)
-      router.push('/dashboard')
-      return
-    }
-
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -199,14 +154,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const logout = async () => {
-    if (useMockAuth) {
-      localStorage.removeItem('mock-dashboard-auth')
-      localStorage.removeItem('mock-profile')
-      setProfile(null)
-      router.push('/dashboard')
-      return
-    }
-
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error

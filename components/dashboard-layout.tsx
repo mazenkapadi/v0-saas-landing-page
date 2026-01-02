@@ -25,9 +25,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-4 border-b">
           <div className="flex items-center gap-2 font-bold">
             <div className="size-7 rounded-lg bg-foreground flex items-center justify-center text-background">
-              Z
+              {profile?.company_name?.charAt(0).toUpperCase() || 'Z'}
             </div>
-            <span>ZaytoonTech</span>
+            <span className="truncate">{profile?.company_name || 'My Company'}</span>
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1 mt-2">
