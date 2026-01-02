@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useAuth } from "@/contexts/auth-context"
-import LoginForm from "@/components/login-form"
+import LoginForm from "@/components/login-form-new"
 import DashboardLayoutComponent from "@/components/dashboard-layout"
 
 export default function DashboardLayout({
