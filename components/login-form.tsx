@@ -7,7 +7,6 @@ import { motion } from "framer-motion"
 import { Eye, EyeOff, Lock, Mail, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { authenticateUser } from "@/lib/auth"
 import { useAuth } from "@/contexts/auth-context"
 
 export default function LoginForm() {
@@ -24,17 +23,15 @@ export default function LoginForm() {
     setIsLoading(true)
     setError("")
 
-    // Simulate authentication delay
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    const user = authenticateUser(email, password)
-    if (user) {
-      login(user)
+    const result = await login(email, password)
+    
+    if (result.error) {
+      setError(result.error)
+      setIsLoading(false)
     } else {
-      setError("Invalid credentials. Please check the demo accounts below.")
+      // Login successful, AuthContext will handle redirect
+      setIsLoading(false)
     }
-
-    setIsLoading(false)
   }
 
   return (

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import InvoiceGenerator from "@/components/invoice-generator"
+import InvoiceGeneratorSimple from "@/components/invoice-generator-simple"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -14,7 +14,7 @@ export default function Home() {
             </Link>
           </Button>
       </div>
-      <InvoiceGenerator />
+      <InvoiceGeneratorSimple />
       <footer className="mt-8 sm:mt-10 text-center text-muted-foreground text-sm pb-4">
         <p>
           © {new Date().getFullYear()}{" "}
