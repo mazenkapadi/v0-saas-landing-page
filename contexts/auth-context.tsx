@@ -1,23 +1,19 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
+import type { User } from "@supabase/supabase-js"
 import type { Profile } from "@/types/database"
-
-interface User extends Profile {
-  // Extend with any additional fields needed
-}
 
 interface AuthContextType {
   user: User | null
-  supabaseUser: SupabaseUser | null
+  profile: Profile | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (email: string, password: string) => Promise<{ error?: string }>
+  login: (email: string, password: string) => Promise<void>
+  signup: (email: string, password: string, name: string, companyName: string) => Promise<void>
   logout: () => Promise<void>
-  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -36,59 +32,78 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
-  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [useMockAuth, setUseMockAuth] = useState(false)
   const router = useRouter()
-  const pathname = usePathname()
   const supabase = createClient()
 
-  const isAuthenticated = !!user && !!supabaseUser
+  const isAuthenticated = !!user || !!profile
 
+  // Fetch user profile
   const fetchProfile = async (userId: string) => {
     try {
-      const { data: profile, error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
 
       if (error) throw error
-      return profile
+      setProfile(data)
     } catch (error) {
       console.error('Error fetching profile:', error)
-      return null
+      setProfile(null)
     }
   }
 
-  const refreshProfile = async () => {
-    if (!supabaseUser) return
-    const profile = await fetchProfile(supabaseUser.id)
-    if (profile) {
-      setUser(profile)
-    }
-  }
-
+  // Check and restore session on mount
   useEffect(() => {
-    // Check authentication status on mount
     const checkAuth = async () => {
-      try {
-        const { data: { user: authUser }, error } = await supabase.auth.getUser()
+      const timeout = setTimeout(() => {
+        console.error('Auth check timed out')
+        setUser(null)
+        setProfile(null)
+        setIsLoading(false)
+      }, 5000) // 5 second timeout
 
-        if (error || !authUser) {
-          setUser(null)
-          setSupabaseUser(null)
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        clearTimeout(timeout)
+
+        if (error) {
+          console.error('Supabase auth error:', error)
+          throw error
+        }
+
+        if (session?.user) {
+          setUser(session.user)
+          await fetchProfile(session.user.id)
         } else {
-          setSupabaseUser(authUser)
-          const profile = await fetchProfile(authUser.id)
-          if (profile) {
-            setUser(profile)
-          }
+          setUser(null)
+          setProfile(null)
         }
       } catch (error) {
-        console.error("Error checking authentication:", error)
+        console.error('Error checking authentication:', error)
+        console.warn('Supabase connection failed, using mock authentication mode')
+        setUseMockAuth(true)
+        
+        // Check for mock auth in localStorage
+        const mockAuthStatus = localStorage.getItem('mock-dashboard-auth')
+        const mockProfileStr = localStorage.getItem('mock-profile')
+        
+        if (mockAuthStatus === 'true' && mockProfileStr) {
+          try {
+            setProfile(JSON.parse(mockProfileStr))
+          } catch (e) {
+            console.error('Failed to parse mock profile')
+          }
+        }
+        
         setUser(null)
-        setSupabaseUser(null)
       } finally {
+        clearTimeout(timeout)
         setIsLoading(false)
       }
     }
@@ -97,16 +112,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setSupabaseUser(session.user)
-        const profile = await fetchProfile(session.user.id)
-        if (profile) {
-          setUser(profile)
-        }
-      } else if (event === 'SIGNED_OUT') {
+      if (session?.user) {
+        setUser(session.user)
+        await fetchProfile(session.user.id)
+      } else {
         setUser(null)
-        setSupabaseUser(null)
+        setProfile(null)
       }
+      setIsLoading(false)
     })
 
     return () => {
@@ -114,66 +127,106 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [])
 
-  // Redirect logic for dashboard routes
-  useEffect(() => {
-    if (isLoading) return
-
-    const isDashboardRoute = pathname.startsWith("/dashboard") && pathname !== "/dashboard"
-
-    if (isDashboardRoute && !isAuthenticated) {
-      // Redirect to login if trying to access dashboard without auth
-      router.push("/dashboard")
+  const login = async (email: string, password: string) => {
+    if (useMockAuth) {
+      // Mock authentication for development
+      const mockProfile: Profile = {
+        id: 'mock-user-1',
+        email: email,
+        name: 'Test User',
+        company_name: 'Test Company',
+        phone: '+1 234 567 8900',
+        address: '123 Test St\nTest City, TS 12345',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      
+      localStorage.setItem('mock-dashboard-auth', 'true')
+      localStorage.setItem('mock-profile', JSON.stringify(mockProfile))
+      setProfile(mockProfile)
+      router.push('/dashboard')
+      return
     }
-  }, [isAuthenticated, isLoading, pathname, router])
 
-  const login = async (email: string, password: string): Promise<{ error?: string }> => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
       if (data.user) {
-        setSupabaseUser(data.user)
-        const profile = await fetchProfile(data.user.id)
-        if (profile) {
-          setUser(profile)
-          return {}
-        } else {
-          return { error: 'Profile not found' }
-        }
+        setUser(data.user)
+        await fetchProfile(data.user.id)
+        router.push('/dashboard')
       }
+    } catch (error: any) {
+      console.error('Login error:', error)
+      throw new Error(error.message || 'Failed to login')
+    }
+  }
 
-      return { error: 'Login failed' }
-    } catch (error) {
-      console.error("Error during login:", error)
-      return { error: 'An unexpected error occurred' }
+  const signup = async (email: string, password: string, name: string, companyName: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            company_name: companyName,
+          },
+        },
+      })
+
+      if (error) throw error
+
+      if (data.user) {
+        // Profile is auto-created by database trigger
+        setUser(data.user)
+        
+        // Wait a bit for trigger to complete, then fetch profile
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await fetchProfile(data.user.id)
+        
+        router.push('/dashboard')
+      }
+    } catch (error: any) {
+      console.error('Signup error:', error)
+      throw new Error(error.message || 'Failed to sign up')
     }
   }
 
   const logout = async () => {
+    if (useMockAuth) {
+      localStorage.removeItem('mock-dashboard-auth')
+      localStorage.removeItem('mock-profile')
+      setProfile(null)
+      router.push('/dashboard')
+      return
+    }
+
     try {
-      await supabase.auth.signOut()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+
       setUser(null)
-      setSupabaseUser(null)
-      router.push("/dashboard")
+      setProfile(null)
+      router.push('/dashboard')
     } catch (error) {
-      console.error("Error during logout:", error)
+      console.error('Logout error:', error)
     }
   }
 
   const value: AuthContextType = {
     user,
-    supabaseUser,
+    profile,
     isAuthenticated,
     isLoading,
     login,
+    signup,
     logout,
-    refreshProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

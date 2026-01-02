@@ -23,13 +23,12 @@ export default function LoginForm() {
     setIsLoading(true)
     setError("")
 
-    const result = await login(email, password)
-    
-    if (result.error) {
-      setError(result.error)
-      setIsLoading(false)
-    } else {
-      // Login successful, AuthContext will handle redirect
+    try {
+      await login(email, password)
+      // Router redirect handled by login function
+    } catch (err: any) {
+      setError(err.message || "Invalid email or password")
+    } finally {
       setIsLoading(false)
     }
   }

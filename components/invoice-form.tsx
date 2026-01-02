@@ -12,10 +12,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Trash2, Plus } from "lucide-react"
 import type { InvoiceData } from "@/types/invoice"
+import type { Client } from "@/types/database"
 import { formatCurrency, currencies } from "@/lib/utils"
 
 interface InvoiceFormProps {
   invoiceData: InvoiceData
+  clients?: Client[]
+  selectedClientId?: string
+  onClientSelect?: (clientId: string) => void
   handleInvoiceChange: (field: string, value: string | number | boolean) => void
   handleItemChange: (id: string, field: string, value: string | number) => void
   handleLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
@@ -33,6 +37,9 @@ interface InvoiceFormProps {
 
 export default function InvoiceForm({
   invoiceData,
+  clients,
+  selectedClientId,
+  onClientSelect,
   handleInvoiceChange,
   handleItemChange,
   handleLogoUpload,
@@ -47,6 +54,7 @@ export default function InvoiceForm({
   calculateTaxableAmount,
   calculateTotal,
 }: InvoiceFormProps) {
+  const selectedClient = clients?.find(c => c.id === selectedClientId)
   return (
     <Card>
       <CardContent className="p-6">
@@ -62,6 +70,23 @@ export default function InvoiceForm({
                   onChange={(e) => handleInvoiceChange("invoiceNumber", e.target.value)}
                 />
               </div>
+              {clients && clients.length > 0 && (
+                <div>
+                  <Label htmlFor="client">Client</Label>
+                  <Select value={selectedClientId} onValueChange={onClientSelect}>
+                    <SelectTrigger id="client">
+                      <SelectValue placeholder="Select a client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map((client) => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.name} {client.company_name && `- ${client.company_name}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label htmlFor="date">Date</Label>
                 <Input

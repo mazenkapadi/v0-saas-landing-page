@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { jsPDF } from "jspdf"
 import html2canvas from "html2canvas"
 import { v4 as uuidv4 } from "uuid"
@@ -13,16 +13,25 @@ import InvoiceForm from "@/components/invoice-form"
 import InvoicePreview from "@/components/invoice-preview"
 import { addDaysToInvoiceDate } from "@/lib/invoices"
 import type { InvoiceData } from "@/types/invoice"
+import type { Client } from "@/types/database"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
+import { Save } from "lucide-react"
 
 export default function InvoiceGenerator() {
   const [activeTab, setActiveTab] = useState("edit")
   const invoiceRef = useRef<HTMLDivElement>(null)
+  const [clients, setClients] = useState<Client[]>([])
+  const [selectedClientId, setSelectedClientId] = useState<string>("")
+  const [saving, setSaving] = useState(false)
+  const { profile } = useAuth()
+  const router = useRouter()
 
   const [invoiceData, setInvoiceData] = useState<InvoiceData>({
     invoiceNumber: `INV-${Math.floor(Math.random() * 10000)}`,
     date: new Date().toISOString().split("T")[0],
-    // dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    dueDate: addDaysToInvoiceDate(new Date(), 2).toISOString().split("T")[0], // 2 business days from the current date
+    dueDate: addDaysToInvoiceDate(new Date(), 2).toISOString().split("T")[0],
+    status: "draft",
     companyName: "",
     companyLogo: "",
     companyDetails: "",
@@ -52,6 +61,45 @@ export default function InvoiceGenerator() {
     discountValue: 0,
     applyInvoiceDiscountToDiscountedItems: true,
   })
+
+  useEffect(() => {
+    fetchClients()
+    // Auto-fill user profile information
+    if (profile) {
+      setInvoiceData(prev => ({
+        ...prev,
+        fromName: profile.name || "",
+        fromEmail: profile.email || "",
+        fromAddress: profile.address || "",
+        companyName: profile.company_name || "",
+      }))
+    }
+  }, [profile])
+
+  const fetchClients = async () => {
+    try {
+      const response = await fetch("/api/clients")
+      if (response.ok) {
+        const data = await response.json()
+        setClients(data)
+      }
+    } catch (error) {
+      console.error("Error fetching clients:", error)
+    }
+  }
+
+  const handleClientSelect = (clientId: string) => {
+    setSelectedClientId(clientId)
+    const client = clients.find(c => c.id === clientId)
+    if (client) {
+      setInvoiceData({
+        ...invoiceData,
+        toName: client.name,
+        toEmail: client.email,
+        toAddress: client.address || "",
+      })
+    }
+  }
   
   const handleInvoiceChange = (field: string, value: string | number | boolean) => {
   if (field === "currency") {
@@ -229,8 +277,56 @@ export default function InvoiceGenerator() {
     }
   }
 
-  
+  const saveInvoice = async () => {
+    if (!selectedClientId) {
+      alert("Please select a client")
+      return
+    }
 
+    if (invoiceData.items.some(item => !item.description || item.price <= 0)) {
+      alert("Please fill in all item details")
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      const response = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: selectedClientId,
+          invoice_number: invoiceData.invoiceNumber,
+          status: invoiceData.status || "draft",
+          issue_date: invoiceData.date,
+          due_date: invoiceData.dueDate,
+          tax_rate: invoiceData.taxRate,
+          discount_type: invoiceData.discountValue > 0 ? invoiceData.discountType : null,
+          discount_value: invoiceData.discountValue > 0 ? invoiceData.discountValue : null,
+          currency: invoiceData.currency,
+          notes: invoiceData.notes,
+          items: invoiceData.items.map(item => ({
+            description: item.description,
+            quantity: item.quantity,
+            unit_price: item.price,
+          })),
+        }),
+      })
+
+      if (response.ok) {
+        alert("Invoice saved successfully!")
+        router.push("/dashboard/invoices")
+      } else {
+        const error = await response.json()
+        alert(`Error: ${error.error || "Failed to save invoice"}`)
+      }
+    } catch (error) {
+      console.error("Error saving invoice:", error)
+      alert("Failed to save invoice")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6">
@@ -243,6 +339,9 @@ export default function InvoiceGenerator() {
         <TabsContent value="edit">
           <InvoiceForm
             invoiceData={invoiceData}
+            clients={clients}
+            selectedClientId={selectedClientId}
+            onClientSelect={handleClientSelect}
             handleInvoiceChange={handleInvoiceChange}
             handleItemChange={handleItemChange}
             handleLogoUpload={handleLogoUpload}
@@ -257,6 +356,15 @@ export default function InvoiceGenerator() {
             calculateTax={calculateTax}
             calculateTotal={calculateTotal}
           />
+          <div className="mt-6 flex justify-end gap-4">
+            <Button onClick={() => router.push("/dashboard/invoices")} variant="outline">
+              Cancel
+            </Button>
+            <Button onClick={saveInvoice} disabled={saving}>
+              <Save className="size-4 mr-2" />
+              {saving ? "Saving..." : "Save Invoice"}
+            </Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="preview">
@@ -274,7 +382,11 @@ export default function InvoiceGenerator() {
                 calculateTotal={calculateTotal}
               />
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex justify-end gap-4">
+              <Button onClick={saveInvoice} disabled={saving} variant="outline">
+                <Save className="size-4 mr-2" />
+                {saving ? "Saving..." : "Save Invoice"}
+              </Button>
               <Button onClick={downloadPdf}>Download PDF</Button>
             </div>
           </Card>

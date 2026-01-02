@@ -13,6 +13,7 @@ export interface InvoiceData {
   invoiceNumber: string
   date: string
   dueDate: string
+  status?: "draft" | "sent" | "paid" | "overdue" | "cancelled"
   companyName: string
   companyLogo: string
   companyDetails: string

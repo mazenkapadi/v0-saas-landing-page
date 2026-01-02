@@ -1,20 +1,25 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Download } from "lucide-react"
+import { jsPDF } from "jspdf"
+import html2canvas from "html2canvas"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { InvoiceWithDetails } from "@/types/database"
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const [id, setId] = useState<string | null>(null)
   const [invoice, setInvoice] = useState<InvoiceWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const invoiceRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -38,6 +43,54 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       console.error("Error fetching invoice:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const downloadPdf = async () => {
+    if (invoiceRef.current) {
+      const canvas = await html2canvas(invoiceRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      })
+
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
+
+      const imgWidth = 210
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight)
+      pdf.save(`invoice-${invoice?.invoice_number}.pdf`)
+    }
+  }
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!id) return
+    
+    setUpdatingStatus(true)
+    try {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (response.ok) {
+        const updatedInvoice = await response.json()
+        setInvoice(updatedInvoice)
+      } else {
+        alert("Failed to update status")
+      }
+    } catch (error) {
+      console.error("Error updating status:", error)
+      alert("Failed to update status")
+    } finally {
+      setUpdatingStatus(false)
     }
   }
 
@@ -82,20 +135,36 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               Back to Invoices
             </Link>
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={downloadPdf}>
             <Download className="size-4 mr-2" />
             Download PDF
           </Button>
         </div>
 
-        <Card>
+        <Card ref={invoiceRef}>
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-3xl">Invoice {invoice.invoice_number}</CardTitle>
-                <p className="text-muted-foreground mt-2">
-                  Status: <Badge variant={getStatusBadgeVariant(invoice.status)}>{invoice.status}</Badge>
-                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Status:</span>
+                  <Select 
+                    value={invoice.status} 
+                    onValueChange={handleStatusChange}
+                    disabled={updatingStatus}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="sent">Sent</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="overdue">Overdue</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Issue Date</p>

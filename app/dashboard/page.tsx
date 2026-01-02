@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { LogOut, FileText, Users, Home, Plus, TrendingUp, DollarSign } from "lucide-react"
+import { Plus, TrendingUp, DollarSign, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -12,8 +11,7 @@ import { useAuth } from "@/contexts/auth-context"
 import type { InvoiceWithDetails } from "@/types/database"
 
 export default function DashboardPage() {
-  const { user, isAuthenticated, isLoading, logout } = useAuth()
-  const router = useRouter()
+  const { profile, isAuthenticated, isLoading } = useAuth()
   const [invoices, setInvoices] = useState<InvoiceWithDetails[]>([])
   const [loadingInvoices, setLoadingInvoices] = useState(true)
 
@@ -60,13 +58,23 @@ export default function DashboardPage() {
     )
   }
 
+  // Helper function to check if invoice is overdue
+  const isInvoiceOverdue = (invoice: InvoiceWithDetails) => {
+    if (invoice.status === "paid" || invoice.status === "cancelled") return false
+    return new Date(invoice.due_date) < new Date()
+  }
+
   // Calculate metrics
   const totalRevenue = invoices
     .filter((inv) => inv.status === "paid")
     .reduce((sum, inv) => sum + inv.total, 0)
   
-  const pendingInvoices = invoices.filter((inv) => inv.status === "sent")
-  const overdueInvoices = invoices.filter((inv) => inv.status === "overdue")
+  const pendingInvoices = invoices.filter((inv) => 
+    inv.status === "sent" && !isInvoiceOverdue(inv)
+  )
+  const overdueInvoices = invoices.filter((inv) => 
+    inv.status === "overdue" || isInvoiceOverdue(inv)
+  )
   const paidInvoices = invoices.filter((inv) => inv.status === "paid")
   
   const pendingRevenue = pendingInvoices.reduce((sum, inv) => sum + inv.total, 0)
@@ -75,6 +83,11 @@ export default function DashboardPage() {
   const recentInvoices = [...invoices].sort(
     (a, b) => new Date(b.issue_date).getTime() - new Date(a.issue_date).getTime()
   ).slice(0, 5)
+
+  const getInvoiceStatus = (invoice: InvoiceWithDetails) => {
+    if (isInvoiceOverdue(invoice)) return "overdue"
+    return invoice.status
+  }
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -92,60 +105,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      {/* Sidebar */}
-      <div className="w-56 bg-background border-r flex flex-col fixed left-0 top-0 h-screen z-10">
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-2 font-bold">
-            <div className="size-7 rounded-lg bg-foreground flex items-center justify-center text-background">Z</div>
-            <span>ZaytoonTech</span>
-          </div>
-        </div>
-        <nav className="flex-1 p-3 space-y-1 mt-2">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 px-3 py-1.5 rounded-md text-sm font-medium bg-muted text-foreground"
-          >
-            <Home className="size-4" />
-            Dashboard
-          </Link>
-          <Link
-            href="/dashboard/invoices"
-            className="flex items-center gap-3 px-3 py-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <FileText className="size-4" />
-            Invoices
-          </Link>
-          <Link
-            href="/dashboard/clients"
-            className="flex items-center gap-3 px-3 py-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <Users className="size-4" />
-            Clients
-          </Link>
-        </nav>
-        <div className="p-3 border-t">
-          {user && (
-            <div className="mb-3 p-2 bg-muted/50 rounded-md">
-              <div className="text-sm font-medium truncate">{user.name}</div>
-              <div className="text-xs text-muted-foreground">{user.email}</div>
-            </div>
-          )}
-          <Button variant="ghost" size="sm" onClick={logout} className="w-full justify-start">
-            <LogOut className="size-4 mr-2" />
-            Logout
-          </Button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6 ml-56">
+    <div className="p-6">
         <div className="max-w-7xl">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold">Dashboard</h1>
-              <p className="text-muted-foreground">Welcome back, {user?.name}! Here's your business overview.</p>
+              <p className="text-muted-foreground">Welcome back, {profile?.name}! Here's your business overview.</p>
             </div>
             <Button asChild>
               <Link href="/dashboard/invoice-generator">
@@ -252,8 +218,8 @@ export default function DashboardPage() {
                         <TableCell>{new Date(invoice.issue_date).toLocaleDateString()}</TableCell>
                         <TableCell>${invoice.total.toFixed(2)}</TableCell>
                         <TableCell>
-                          <Badge variant={getStatusBadgeVariant(invoice.status)}>
-                            {invoice.status}
+                          <Badge variant={getStatusBadgeVariant(getInvoiceStatus(invoice))}>
+                            {getInvoiceStatus(invoice)}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -264,7 +230,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
-      </main>
     </div>
   )
 }

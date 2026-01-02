@@ -3,8 +3,8 @@
 import type React from "react"
 
 import { useAuth } from "@/contexts/auth-context"
-import { BusinessProvider } from "@/contexts/business-context"
 import LoginForm from "@/components/login-form"
+import DashboardLayoutComponent from "@/components/dashboard-layout"
 
 export default function DashboardLayout({
   children,
@@ -25,5 +25,5 @@ export default function DashboardLayout({
     return <LoginForm />
   }
 
-  return <BusinessProvider>{children}</BusinessProvider>
+  return <DashboardLayoutComponent>{children}</DashboardLayoutComponent>
 }

@@ -49,6 +49,17 @@ export default function InvoicesRoute() {
     }
   }
 
+  // Helper function to check if invoice is overdue
+  const isInvoiceOverdue = (invoice: InvoiceWithDetails) => {
+    if (invoice.status === "paid" || invoice.status === "cancelled") return false
+    return new Date(invoice.due_date) < new Date()
+  }
+
+  const getInvoiceStatus = (invoice: InvoiceWithDetails) => {
+    if (isInvoiceOverdue(invoice)) return "overdue"
+    return invoice.status
+  }
+
   const filteredInvoices = invoices.filter(
     (invoice) =>
       invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -58,8 +69,8 @@ export default function InvoicesRoute() {
 
   const totalInvoices = invoices.length
   const paidInvoices = invoices.filter((inv) => inv.status === "paid").length
-  const sentInvoices = invoices.filter((inv) => inv.status === "sent").length
-  const overdueInvoices = invoices.filter((inv) => inv.status === "overdue").length
+  const sentInvoices = invoices.filter((inv) => inv.status === "sent" && !isInvoiceOverdue(inv)).length
+  const overdueInvoices = invoices.filter((inv) => isInvoiceOverdue(inv)).length
   const totalRevenue = invoices
     .filter((inv) => inv.status === "paid")
     .reduce((sum, inv) => sum + inv.total, 0)
@@ -201,8 +212,8 @@ export default function InvoicesRoute() {
                       <TableCell>{new Date(invoice.due_date).toLocaleDateString()}</TableCell>
                       <TableCell>${invoice.total.toFixed(2)}</TableCell>
                       <TableCell>
-                        <Badge variant={getStatusBadgeVariant(invoice.status)}>
-                          {invoice.status}
+                        <Badge variant={getStatusBadgeVariant(getInvoiceStatus(invoice))}>
+                          {getInvoiceStatus(invoice)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
